@@ -3,6 +3,8 @@ package com.example.ingredientAgain;
 import com.example.ingredientAgain.datasource.DataSource;
 import com.example.ingredientAgain.repository.DishRepository;
 import com.example.ingredientAgain.repository.IngredientRepository;
+import com.example.ingredientAgain.service.DishService;
+import com.example.ingredientAgain.service.IngredientService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
@@ -28,5 +30,15 @@ public class IngredientAgainApplication {
     @Bean
     public DishRepository dishRepository(DataSource dataSource) {
         return new DishRepository(dataSource);
+    }
+
+    @Bean
+    public IngredientService ingredientService(IngredientRepository ingredientRepository) {
+        return new IngredientService(ingredientRepository);
+    }
+
+    @Bean
+    public DishService dishService(DishRepository dishRepository) {
+        return new DishService(dishRepository);
     }
 }

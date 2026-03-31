@@ -61,7 +61,7 @@ public class IngredientRepository {
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Erreur lors de la recherche de l'ingrédient", e);
+            throw new RuntimeException("Erreur lors de la recherche de l'ingrédient id=" + id, e);
         }
     }
 
@@ -85,7 +85,7 @@ public class IngredientRepository {
                 return new StockValue(quantity, unit);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Erreur lors du calcul du stock", e);
+            throw new RuntimeException("Erreur lors du calcul du stock de l'ingrédient id=" + ingredientId, e);
         }
     }
 }
