@@ -1,10 +1,10 @@
 package com.example.ingredientAgain.repository;
 
 import com.example.ingredientAgain.datasource.DataSource;
+import com.example.ingredientAgain.controller.CreateDishRequest;
 import com.example.ingredientAgain.entity.Dish;
 import com.example.ingredientAgain.entity.Ingredient;
 import com.example.ingredientAgain.entity.enums.DishTypeEnum;
-import com.example.ingredientAgain.entity.enums.CategoryEnum;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -16,6 +16,20 @@ public class DishRepository {
 
     public DishRepository(DataSource dataSource) {
         this.dataSource = dataSource;
+    }
+
+    public boolean existsByName(String name) {
+        String sql = "SELECT 1 FROM dish WHERE LOWER(name) = LOWER(?)";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, name);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next();
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Erreur vérification nom plat", e);
+        }
     }
 
     public List<Dish> findAll() {
@@ -30,110 +44,81 @@ public class DishRepository {
                 Dish dish = new Dish();
                 dish.setId(rs.getInt("id"));
                 dish.setName(rs.getString("name"));
-
-                String typeStr = rs.getString("dish_type");
-                if ("STARTER".equals(typeStr)) {
-                    typeStr = "START";
-                }
-                dish.setDishType(DishTypeEnum.valueOf(typeStr));
-
-                if (rs.getObject("selling_price") != null) {
-                    dish.setSellingPrice(rs.getDouble("selling_price"));
-                }
-
-                dish.setIngredients(loadIngredientsForDish(dish.getId()));
-
+                dish.setDishType(DishTypeEnum.valueOf(rs.getString("dish_type")));
+                dish.setSellingPrice(rs.getObject("selling_price") != null ? rs.getDouble("selling_price") : null);
+                dish.setIngredients(new ArrayList<>());
                 dishes.add(dish);
             }
+
         } catch (SQLException e) {
-            throw new RuntimeException("Erreur lors de la récupération des plats", e);
+            throw new RuntimeException("Erreur récupération plats", e);
         }
         return dishes;
     }
 
-    private List<Ingredient> loadIngredientsForDish(Integer dishId) {
-        List<Ingredient> ingredients = new ArrayList<>();
-        String sql = """
-            SELECT i.id, i.name, i.price, i.category
-            FROM dish_ingredient di
-            JOIN ingredient i ON di.id_ingredient = i.id
-            WHERE di.id_dish = ?
-            ORDER BY i.id
-            """;
-
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setInt(1, dishId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    Ingredient ing = new Ingredient();
-                    ing.setId(rs.getInt("id"));
-                    ing.setName(rs.getString("name"));
-                    ing.setPrice(rs.getDouble("price"));
-                    ing.setCategory(CategoryEnum.valueOf(rs.getString("category")));
-                    ingredients.add(ing);
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Erreur lors du chargement des ingrédients du plat id=" + dishId, e);
-        }
-        return ingredients;
-    }
-
-    public void updateIngredients(Integer dishId, List<Ingredient> ingredientsToSet) {
-        if (!dishExists(dishId)) {
-            throw new RuntimeException("Dish.id=" + dishId + " is not found");
-        }
+    public void updateIngredients(Integer dishId, List<Ingredient> ingredients) {
+        String deleteSql = "DELETE FROM dish_ingredient WHERE id_dish = ?";
+        String insertSql = "INSERT INTO dish_ingredient (id_dish, id_ingredient, required_quantity, unit) VALUES (?, ?, 0.0, 'KG')";
 
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
 
-            try (PreparedStatement deleteStmt = conn.prepareStatement("DELETE FROM dish_ingredient WHERE id_dish = ?")) {
+            try (PreparedStatement deleteStmt = conn.prepareStatement(deleteSql)) {
                 deleteStmt.setInt(1, dishId);
                 deleteStmt.executeUpdate();
             }
 
-            String insertSql = """
-                INSERT INTO dish_ingredient (id_dish, id_ingredient, quantity_required, unit)
-                VALUES (?, ?, 0.0, 'KG')
-                """;
-
             try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
-                for (Ingredient ing : ingredientsToSet) {
-                    if (ing.getId() != null && ingredientExists(conn, ing.getId())) {
-                        insertStmt.setInt(1, dishId);
-                        insertStmt.setInt(2, ing.getId());
-                        insertStmt.executeUpdate();
+                for (Ingredient ing : ingredients) {
+                    insertStmt.setInt(1, dishId);
+                    insertStmt.setInt(2, ing.getId());
+                    insertStmt.executeUpdate();
+                }
+            }
+
+            conn.commit();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur update ingrédients", e);
+        }
+    }
+
+    public List<Dish> createDishes(List<CreateDishRequest> requests) {
+        List<Dish> created = new ArrayList<>();
+        String sql = "INSERT INTO dish (name, dish_type, selling_price) VALUES (?, ?::dish_type, ?) RETURNING id, name, dish_type, selling_price";
+
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
+
+            for (CreateDishRequest req : requests) {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, req.getName());
+                    stmt.setString(2, req.getDishType().name());
+                    if (req.getSellingPrice() != null) {
+                        stmt.setDouble(3, req.getSellingPrice());
+                    } else {
+                        stmt.setNull(3, Types.NUMERIC);
+                    }
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) {
+                            Dish dish = new Dish();
+                            dish.setId(rs.getInt("id"));
+                            dish.setName(rs.getString("name"));
+                            dish.setDishType(DishTypeEnum.valueOf(rs.getString("dish_type")));
+                            dish.setSellingPrice(rs.getObject("selling_price") != null ? rs.getDouble("selling_price") : null);
+                            dish.setIngredients(new ArrayList<>());
+                            created.add(dish);
+                        }
                     }
                 }
             }
+
             conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Erreur lors de la mise à jour des ingrédients du plat id=" + dishId, e);
-        }
-    }
 
-    private boolean dishExists(Integer dishId) {
-        String sql = "SELECT 1 FROM dish WHERE id = ?";
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setInt(1, dishId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
-            }
-        } catch (SQLException e) {
-            return false;
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur création plats", e);
         }
-    }
-
-    private boolean ingredientExists(Connection conn, Integer ingredientId) throws SQLException {
-        String sql = "SELECT 1 FROM ingredient WHERE id = ?";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setInt(1, ingredientId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
-            }
-        }
+        return created;
     }
 }
