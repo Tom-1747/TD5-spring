@@ -1,0 +1,84 @@
+openapi: 3.0.3
+info:
+  title: TD5 - INGREDIENT API
+  version: "1.0.0"
+
+paths:
+
+  /ingredients/{id}:
+    get:
+      summary: Récupérer un ingredient grace a son ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ingredient'
+        '404':
+          description: Non trouver
+
+  /ingredients/{id}/stock:
+    get:
+      summary: Récupère le stock d’un ingrédient
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: at
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: unit
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [ PCS, KG, L ]
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Ingredient'
+      '400':
+        description: Paramètre obligatoire manquant
+        content:
+          text/plain:
+            schema:
+              type: string
+      '404':
+        description: Ingrédient non trouvé
+        content:
+          text/plain:
+            schema:
+              type: string
+
+components:
+  schemas:
+    Ingredient:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        price: { type: number }
+        category:
+          type: string
+          enum: [ VEGETABLE, ANIMAL, MARINE, DAIRY, OTHER ]
+
+    IngredientPartial:
+      type: object
+      properties:
+        id: {type: integer}
+
